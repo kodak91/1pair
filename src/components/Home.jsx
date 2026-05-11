@@ -24,6 +24,8 @@ export default function Home({ user, userData, testMode = false }) {
   const [lastSent, setLastSent] = useState(null)
   const [fcmReady, setFcmReady] = useState(false)
   const [myFcmToken, setMyFcmToken] = useState(null)
+  // 'unknown' | 'asking' | 'granted' | 'denied'
+  const [notifPermission, setNotifPermission] = useState('unknown')
 
   // 파트너 정보 로드 (테스트모드: 자기 자신)
   useEffect(() => {
@@ -37,36 +39,48 @@ export default function Home({ user, userData, testMode = false }) {
     })
   }, [userData?.partnerId, testMode, userData])
 
-  // FCM 토큰 등록
+  // FCM 초기화
   useEffect(() => {
-    let unsub
-    async function setupFCM() {
-      const messaging = await getMessagingInstance()
-      if (!messaging) return
-
-      try {
-        const token = await getToken(messaging, {
-          vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
-        })
-        if (token) {
-          setMyFcmToken(token)
-          if (token !== userData?.fcmToken) {
-            await updateDoc(doc(db, 'users', user.uid), { fcmToken: token })
-          }
-        }
-        setFcmReady(true)
-
-        unsub = onMessage(messaging, (payload) => {
-          const { title, body } = payload.notification || {}
-          if (title || body) showInAppNotification(title, body)
-        })
-      } catch (err) {
-        console.warn('FCM 토큰 취득 실패:', err)
-      }
+    const perm = Notification.permission
+    if (perm === 'granted') {
+      setNotifPermission('granted')
+      initFCM()
+    } else if (perm === 'denied') {
+      setNotifPermission('denied')
+    } else {
+      setNotifPermission('asking')
     }
-    setupFCM()
-    return () => unsub?.()
-  }, [user.uid, userData?.fcmToken])
+  }, [])
+
+  async function requestPermissionAndInit() {
+    const result = await Notification.requestPermission()
+    setNotifPermission(result)
+    if (result === 'granted') await initFCM()
+  }
+
+  let unsubMessage = null
+  async function initFCM() {
+    const messaging = await getMessagingInstance()
+    if (!messaging) return
+    try {
+      const token = await getToken(messaging, {
+        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
+      })
+      if (token) {
+        setMyFcmToken(token)
+        if (token !== userData?.fcmToken) {
+          await updateDoc(doc(db, 'users', user.uid), { fcmToken: token })
+        }
+      }
+      setFcmReady(true)
+      unsubMessage = onMessage(messaging, (payload) => {
+        const { title, body } = payload.notification || {}
+        if (title || body) showInAppNotification(title, body)
+      })
+    } catch (err) {
+      console.warn('FCM 토큰 취득 실패:', err)
+    }
+  }
 
   function showInAppNotification(title, body) {
     const el = document.createElement('div')
@@ -82,7 +96,6 @@ export default function Home({ user, userData, testMode = false }) {
   }
 
   async function sendPippi(type) {
-    // 테스트모드: 내 FCM 토큰으로 전송
     const targetToken = testMode ? myFcmToken : partnerData?.fcmToken
     if (!targetToken) {
       alert(testMode
@@ -98,10 +111,8 @@ export default function Home({ user, userData, testMode = false }) {
         type,
         sentAt: serverTimestamp()
       })
-
       const msgText = PIPPI_MESSAGES[type](userData.nickname)
       await sendFCMDirect(targetToken, '1Pair 삐삐 📳', msgText)
-
       setLastSent(type)
       setTimeout(() => setLastSent(null), 3000)
     } catch (err) {
@@ -127,6 +138,44 @@ export default function Home({ user, userData, testMode = false }) {
 
   return (
     <div className="page">
+      {/* 알림 권한 요청 팝업 */}
+      {notifPermission === 'asking' && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: 24
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 20, padding: 32,
+            width: '100%', maxWidth: 320, textAlign: 'center',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.18)'
+          }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🔔</div>
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 10 }}>알림 권한이 필요해요</h3>
+            <p style={{ color: '#888', fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              상대방의 삐삐를 받으려면<br/>알림 권한을 허용해주세요.
+            </p>
+            <button
+              className="btn-primary"
+              onClick={requestPermissionAndInit}
+            >
+              알림 허용하기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 알림 차단 안내 */}
+      {notifPermission === 'denied' && (
+        <div style={{
+          background: '#fff3cd', borderRadius: 12, padding: '12px 16px',
+          fontSize: 13, color: '#856404', marginBottom: 16, textAlign: 'center'
+        }}>
+          🔕 알림이 차단되어 있어요.<br/>
+          브라우저 설정 → 알림 → 이 사이트 허용 후 새로고침해주세요.
+        </div>
+      )}
+
       {/* 테스트 모드 배너 */}
       {testMode && (
         <div style={{
@@ -146,7 +195,7 @@ export default function Home({ user, userData, testMode = false }) {
           </p>
         </div>
         <button
-          style={{ background: 'none', color: '#ccc', padding: '8px 12px', fontSize: 13 }}
+          style={{ background: 'none', color: '#888', padding: '8px 12px', fontSize: 13, border: '1px solid #eee', borderRadius: 8 }}
           onClick={() => signOut(auth)}
         >
           로그아웃
@@ -195,12 +244,6 @@ export default function Home({ user, userData, testMode = false }) {
           ))}
         </div>
       </div>
-
-      {!fcmReady && (
-        <p style={{ color: '#ccc', fontSize: 12, textAlign: 'center', marginTop: 24 }}>
-          알림 권한 설정 중...
-        </p>
-      )}
     </div>
   )
 }

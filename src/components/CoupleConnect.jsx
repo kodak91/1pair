@@ -83,7 +83,7 @@ export default function CoupleConnect({ user, userData, onTestMode }) {
       {/* 헤더 */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <button
-          style={{ background: 'none', color: '#ccc', padding: '8px 12px', fontSize: 13 }}
+          style={{ background: 'none', color: '#888', padding: '8px 12px', fontSize: 13, border: '1px solid #eee', borderRadius: 8 }}
           onClick={() => signOut(auth)}
         >
           로그아웃
@@ -145,15 +145,15 @@ export default function CoupleConnect({ user, userData, onTestMode }) {
       </p>
 
       {/* 테스트 모드 */}
-      <div style={{ marginTop: 40, textAlign: 'center' }}>
+      <div style={{ marginTop: 32, textAlign: 'center' }}>
         <button
           style={{
-            background: 'none', color: '#bbb', fontSize: 12,
-            padding: '8px 16px', border: '1px dashed #ddd', borderRadius: 8
+            background: '#f9f9f9', color: '#666', fontSize: 13, fontWeight: 600,
+            padding: '12px 20px', border: '1.5px dashed #ccc', borderRadius: 10
           }}
           onClick={onTestMode}
         >
-          🧪 연결 없이 테스트 모드로 진입
+          🧪 테스트 모드 (혼자 알림 테스트)
         </button>
       </div>
     </div>
