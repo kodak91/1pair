@@ -83,6 +83,7 @@ export default function Home({ user, userData, testMode = false }) {
       })
     } catch (err) {
       console.warn('FCM 토큰 취득 실패:', err)
+      alert(`알림 설정 실패: ${err.message}\nVAPID 키를 확인해주세요.`)
     }
   }
 
@@ -121,7 +122,7 @@ export default function Home({ user, userData, testMode = false }) {
       setTimeout(() => setLastSent(null), 3000)
     } catch (err) {
       console.error('삐삐 전송 실패:', err)
-      alert('전송에 실패했어요. 다시 시도해주세요')
+      alert(`전송 실패: ${err.message}`)
     } finally {
       setSending(null)
     }
