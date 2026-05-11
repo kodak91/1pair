@@ -63,11 +63,12 @@ export default function Home({ user, userData, testMode = false }) {
     const messaging = await getMessagingInstance()
     if (!messaging) return
     try {
-      // 서비스 워커가 준비될 때까지 대기
-      await navigator.serviceWorker.ready
+      // Firebase Messaging 전용 서비스 워커 명시 등록
+      const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
 
       const token = await getToken(messaging, {
-        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
+        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+        serviceWorkerRegistration: swReg
       })
       if (token) {
         myFcmTokenRef.current = token
