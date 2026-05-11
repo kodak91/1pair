@@ -1,20 +1,42 @@
 import { useState } from 'react'
+import { signOut } from 'firebase/auth'
 import {
   collection, query, where, getDocs,
   doc, writeBatch, serverTimestamp
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import { auth, db } from '../firebase'
 
-export default function CoupleConnect({ user, userData }) {
+export default function CoupleConnect({ user, userData, onTestMode }) {
   const [partnerCode, setPartnerCode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [shared, setShared] = useState(false)
 
   function copyCode() {
     navigator.clipboard.writeText(userData?.inviteCode || '')
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  async function shareInvite() {
+    const code = userData?.inviteCode || '------'
+    const url = window.location.origin
+    const text = `1Pair 커플 앱에 초대합니다 💑\n\n앱 설치: ${url}\n내 초대코드: ${code}\n\n설치 후 초대코드를 입력해주세요!`
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: '1Pair 초대', text })
+        setShared(true)
+        setTimeout(() => setShared(false), 2000)
+      } catch {
+        // 사용자가 취소한 경우 무시
+      }
+    } else {
+      await navigator.clipboard.writeText(text)
+      setShared(true)
+      setTimeout(() => setShared(false), 2000)
+    }
   }
 
   async function handleConnect(e) {
@@ -58,7 +80,17 @@ export default function CoupleConnect({ user, userData }) {
 
   return (
     <div className="page">
-      <div style={{ textAlign: 'center', marginBottom: 40 }}>
+      {/* 헤더 */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button
+          style={{ background: 'none', color: '#ccc', padding: '8px 12px', fontSize: 13 }}
+          onClick={() => signOut(auth)}
+        >
+          로그아웃
+        </button>
+      </div>
+
+      <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <div style={{ fontSize: 48 }}>🔗</div>
         <h2 style={{ fontSize: 22, fontWeight: 700, marginTop: 12 }}>커플 연결하기</h2>
         <p style={{ color: '#999', marginTop: 6 }}>서로의 초대코드로 연결해요</p>
@@ -66,23 +98,29 @@ export default function CoupleConnect({ user, userData }) {
 
       {/* 내 초대코드 */}
       <div style={{
-        background: '#fff0f5',
-        borderRadius: 16,
-        padding: 24,
-        textAlign: 'center',
-        marginBottom: 32
+        background: '#fff0f5', borderRadius: 16, padding: 24,
+        textAlign: 'center', marginBottom: 32
       }}>
         <p style={{ color: '#999', fontSize: 14, marginBottom: 8 }}>내 초대코드</p>
         <p style={{ fontSize: 36, fontWeight: 800, letterSpacing: 6, color: '#ff6b9d' }}>
           {userData?.inviteCode || '------'}
         </p>
-        <button
-          className="btn-secondary"
-          style={{ marginTop: 16, width: 'auto', padding: '10px 24px' }}
-          onClick={copyCode}
-        >
-          {copied ? '복사됨 ✓' : '복사하기'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'center' }}>
+          <button
+            className="btn-secondary"
+            style={{ width: 'auto', padding: '10px 20px' }}
+            onClick={copyCode}
+          >
+            {copied ? '복사됨 ✓' : '코드 복사'}
+          </button>
+          <button
+            className="btn-primary"
+            style={{ width: 'auto', padding: '10px 20px', fontSize: 14 }}
+            onClick={shareInvite}
+          >
+            {shared ? '공유됨 ✓' : '공유하기 📤'}
+          </button>
+        </div>
       </div>
 
       {/* 상대 코드 입력 */}
@@ -105,6 +143,19 @@ export default function CoupleConnect({ user, userData }) {
       <p style={{ color: '#ccc', fontSize: 13, marginTop: 24, textAlign: 'center' }}>
         상대방도 이 앱에 가입해야 연결할 수 있어요
       </p>
+
+      {/* 테스트 모드 */}
+      <div style={{ marginTop: 40, textAlign: 'center' }}>
+        <button
+          style={{
+            background: 'none', color: '#bbb', fontSize: 12,
+            padding: '8px 16px', border: '1px dashed #ddd', borderRadius: 8
+          }}
+          onClick={onTestMode}
+        >
+          🧪 연결 없이 테스트 모드로 진입
+        </button>
+      </div>
     </div>
   )
 }

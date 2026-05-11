@@ -16,6 +16,7 @@ export default function App() {
   const [user, setUser] = useState(undefined) // undefined = loading
   const [userData, setUserData] = useState(null)
   const [pwaReady, setPwaReady] = useState(isPWAInstalled())
+  const [testMode, setTestMode] = useState(false)
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -27,6 +28,7 @@ export default function App() {
   useEffect(() => {
     if (!user) {
       setUserData(null)
+      setTestMode(false)
       return
     }
     const unsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
@@ -43,7 +45,8 @@ export default function App() {
 
   if (!pwaReady) return <Onboarding onDone={() => setPwaReady(true)} />
 
-  if (!userData?.partnerId) return <CoupleConnect user={user} userData={userData} />
+  if (!userData?.partnerId && !testMode)
+    return <CoupleConnect user={user} userData={userData} onTestMode={() => setTestMode(true)} />
 
-  return <Home user={user} userData={userData} />
+  return <Home user={user} userData={userData} testMode={!userData?.partnerId && testMode} />
 }

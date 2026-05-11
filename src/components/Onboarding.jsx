@@ -17,6 +17,10 @@ export default function Onboarding({ onDone }) {
   const ios = isIOS()
 
   useEffect(() => {
+    if (isPWAInstalled()) onDone()
+  }, [onDone])
+
+  useEffect(() => {
     const handler = (e) => {
       e.preventDefault()
       deferredPromptRef.current = e
