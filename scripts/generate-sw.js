@@ -32,7 +32,6 @@ if (!env['VITE_FIREBASE_API_KEY']) {
 }
 
 const template = `self.skipWaiting()
-self.clients.claim()
 
 importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js')
 importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-messaging-compat.js')

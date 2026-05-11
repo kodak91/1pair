@@ -63,8 +63,23 @@ export default function Home({ user, userData, testMode = false }) {
     const messaging = await getMessagingInstance()
     if (!messaging) return
     try {
+      const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+      // skipWaiting() in the SW ensures fast activation; wait if still installing
+      if (!swReg.active) {
+        await new Promise((resolve) => {
+          const sw = swReg.installing || swReg.waiting
+          if (!sw) { resolve(); return }
+          sw.addEventListener('statechange', function handler(e) {
+            if (e.target.state === 'activated') {
+              sw.removeEventListener('statechange', handler)
+              resolve()
+            }
+          })
+        })
+      }
       const token = await getToken(messaging, {
         vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+        serviceWorkerRegistration: swReg,
       })
       if (token) {
         myFcmTokenRef.current = token
