@@ -63,8 +63,19 @@ export default function Home({ user, userData, testMode = false }) {
     const messaging = await getMessagingInstance()
     if (!messaging) return
     try {
-      // Firebase Messaging 전용 서비스 워커 명시 등록
+      // Firebase Messaging 전용 서비스 워커 등록 후 active 상태까지 대기
       const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+      await new Promise((resolve) => {
+        if (swReg.active) { resolve(); return }
+        const sw = swReg.installing || swReg.waiting
+        if (!sw) { resolve(); return }
+        sw.addEventListener('statechange', function handler(e) {
+          if (e.target.state === 'activated') {
+            sw.removeEventListener('statechange', handler)
+            resolve()
+          }
+        })
+      })
 
       const token = await getToken(messaging, {
         vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
