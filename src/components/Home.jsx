@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { signOut } from 'firebase/auth'
-import { doc, getDoc, collection, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { doc, onSnapshot, collection, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { getToken, onMessage } from 'firebase/messaging'
 import { auth, db, getMessagingInstance } from '../firebase'
 
@@ -23,28 +23,25 @@ export default function Home({ user, userData, testMode = false }) {
   const [sending, setSending] = useState(null)
   const [lastSent, setLastSent] = useState(null)
   const [fcmReady, setFcmReady] = useState(false)
-  const [myFcmToken, setMyFcmToken] = useState(null)
-  // 'unknown' | 'asking' | 'granted' | 'denied'
+  const myFcmTokenRef = useRef(null)
   const [notifPermission, setNotifPermission] = useState('unknown')
 
-  // 파트너 정보 로드 (테스트모드: 자기 자신)
+  // 파트너 정보 실시간 구독 (onSnapshot으로 FCM 토큰 변경 즉시 반영)
   useEffect(() => {
     if (testMode) {
       setPartnerData(userData)
       return
     }
     if (!userData?.partnerId) return
-    getDoc(doc(db, 'users', userData.partnerId)).then(snap => {
+    const unsub = onSnapshot(doc(db, 'users', userData.partnerId), (snap) => {
       if (snap.exists()) setPartnerData(snap.data())
     })
+    return unsub
   }, [userData?.partnerId, testMode, userData])
 
   // FCM 초기화
   useEffect(() => {
-    if (!('Notification' in window)) {
-      // 알림 API 미지원 환경
-      return
-    }
+    if (!('Notification' in window)) return
     const perm = Notification.permission
     if (perm === 'granted') {
       setNotifPermission('granted')
@@ -62,22 +59,25 @@ export default function Home({ user, userData, testMode = false }) {
     if (result === 'granted') await initFCM()
   }
 
-  let unsubMessage = null
   async function initFCM() {
     const messaging = await getMessagingInstance()
     if (!messaging) return
     try {
+      // 서비스 워커가 준비될 때까지 대기
+      await navigator.serviceWorker.ready
+
       const token = await getToken(messaging, {
         vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
       })
       if (token) {
-        setMyFcmToken(token)
+        myFcmTokenRef.current = token
         if (token !== userData?.fcmToken) {
           await updateDoc(doc(db, 'users', user.uid), { fcmToken: token })
         }
       }
       setFcmReady(true)
-      unsubMessage = onMessage(messaging, (payload) => {
+
+      onMessage(messaging, (payload) => {
         const { title, body } = payload.notification || {}
         if (title || body) showInAppNotification(title, body)
       })
@@ -100,11 +100,11 @@ export default function Home({ user, userData, testMode = false }) {
   }
 
   async function sendPippi(type) {
-    const targetToken = testMode ? myFcmToken : partnerData?.fcmToken
+    const targetToken = testMode ? myFcmTokenRef.current : partnerData?.fcmToken
     if (!targetToken) {
       alert(testMode
         ? '알림 권한을 허용해야 테스트 알림을 받을 수 있어요'
-        : '상대방이 아직 알림을 설정하지 않았어요')
+        : '상대방이 아직 알림을 허용하지 않았어요.\n상대방 앱에서 알림을 허용해주세요.')
       return
     }
     setSending(type)
@@ -159,10 +159,7 @@ export default function Home({ user, userData, testMode = false }) {
             <p style={{ color: '#888', fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
               상대방의 삐삐를 받으려면<br/>알림 권한을 허용해주세요.
             </p>
-            <button
-              className="btn-primary"
-              onClick={requestPermissionAndInit}
-            >
+            <button className="btn-primary" onClick={requestPermissionAndInit}>
               알림 허용하기
             </button>
           </div>
@@ -248,6 +245,13 @@ export default function Home({ user, userData, testMode = false }) {
           ))}
         </div>
       </div>
+
+      {/* 알림 상태 */}
+      {!fcmReady && notifPermission === 'granted' && (
+        <p style={{ color: '#ccc', fontSize: 12, textAlign: 'center', marginTop: 24 }}>
+          알림 설정 중...
+        </p>
+      )}
     </div>
   )
 }
