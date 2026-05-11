@@ -18,19 +18,24 @@ const PIPPI_MESSAGES = {
   call:  (name) => `📞 ${name}이(가) 전화하고 싶대`,
 }
 
-export default function Home({ user, userData }) {
+export default function Home({ user, userData, testMode = false }) {
   const [partnerData, setPartnerData] = useState(null)
   const [sending, setSending] = useState(null)
   const [lastSent, setLastSent] = useState(null)
   const [fcmReady, setFcmReady] = useState(false)
+  const [myFcmToken, setMyFcmToken] = useState(null)
 
-  // 파트너 정보 로드
+  // 파트너 정보 로드 (테스트모드: 자기 자신)
   useEffect(() => {
+    if (testMode) {
+      setPartnerData(userData)
+      return
+    }
     if (!userData?.partnerId) return
     getDoc(doc(db, 'users', userData.partnerId)).then(snap => {
       if (snap.exists()) setPartnerData(snap.data())
     })
-  }, [userData?.partnerId])
+  }, [userData?.partnerId, testMode, userData])
 
   // FCM 토큰 등록
   useEffect(() => {
@@ -43,17 +48,17 @@ export default function Home({ user, userData }) {
         const token = await getToken(messaging, {
           vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
         })
-        if (token && token !== userData?.fcmToken) {
-          await updateDoc(doc(db, 'users', user.uid), { fcmToken: token })
+        if (token) {
+          setMyFcmToken(token)
+          if (token !== userData?.fcmToken) {
+            await updateDoc(doc(db, 'users', user.uid), { fcmToken: token })
+          }
         }
         setFcmReady(true)
 
-        // 포그라운드 수신
         unsub = onMessage(messaging, (payload) => {
           const { title, body } = payload.notification || {}
-          if (title || body) {
-            showInAppNotification(title, body)
-          }
+          if (title || body) showInAppNotification(title, body)
         })
       } catch (err) {
         console.warn('FCM 토큰 취득 실패:', err)
@@ -64,7 +69,6 @@ export default function Home({ user, userData }) {
   }, [user.uid, userData?.fcmToken])
 
   function showInAppNotification(title, body) {
-    // 간단한 인앱 토스트 - 실제 Notification API 대신
     const el = document.createElement('div')
     el.style.cssText = `
       position:fixed;top:20px;left:50%;transform:translateX(-50%);
@@ -78,23 +82,25 @@ export default function Home({ user, userData }) {
   }
 
   async function sendPippi(type) {
-    if (!partnerData?.fcmToken) {
-      alert('상대방이 아직 알림을 설정하지 않았어요')
+    // 테스트모드: 내 FCM 토큰으로 전송
+    const targetToken = testMode ? myFcmToken : partnerData?.fcmToken
+    if (!targetToken) {
+      alert(testMode
+        ? '알림 권한을 허용해야 테스트 알림을 받을 수 있어요'
+        : '상대방이 아직 알림을 설정하지 않았어요')
       return
     }
     setSending(type)
     try {
-      // 1. Firestore 로그 저장
       await addDoc(collection(db, 'pippis'), {
         fromUid: user.uid,
-        toUid: userData.partnerId,
+        toUid: testMode ? user.uid : userData.partnerId,
         type,
         sentAt: serverTimestamp()
       })
 
-      // 2. FCM HTTP v1 API 호출 (클라이언트에서 직접)
       const msgText = PIPPI_MESSAGES[type](userData.nickname)
-      await sendFCMDirect(partnerData.fcmToken, '1Pair 삐삐 📳', msgText)
+      await sendFCMDirect(targetToken, '1Pair 삐삐 📳', msgText)
 
       setLastSent(type)
       setTimeout(() => setLastSent(null), 3000)
@@ -121,12 +127,22 @@ export default function Home({ user, userData }) {
 
   return (
     <div className="page">
+      {/* 테스트 모드 배너 */}
+      {testMode && (
+        <div style={{
+          background: '#fff3cd', borderRadius: 10, padding: '10px 16px',
+          fontSize: 13, color: '#856404', marginBottom: 16, textAlign: 'center'
+        }}>
+          🧪 테스트 모드 — 알림이 나에게 전송돼요
+        </div>
+      )}
+
       {/* 헤더 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#ff6b9d' }}>1Pair 💑</h1>
           <p style={{ color: '#999', fontSize: 13 }}>
-            {userData?.nickname} → {partnerData?.nickname || '...'}
+            {userData?.nickname} → {testMode ? '나 (테스트)' : partnerData?.nickname || '...'}
           </p>
         </div>
         <button
@@ -150,7 +166,7 @@ export default function Home({ user, userData }) {
       {/* 삐삐 버튼들 */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <p style={{ textAlign: 'center', color: '#999', marginBottom: 24, fontSize: 15 }}>
-          {partnerData?.nickname || '상대방'}에게 전달할 감정을 선택하세요
+          {testMode ? '테스트 알림을 보내보세요' : `${partnerData?.nickname || '상대방'}에게 전달할 감정을 선택하세요`}
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           {PIPPI_TYPES.map(({ type, emoji, label }) => (
@@ -180,7 +196,6 @@ export default function Home({ user, userData }) {
         </div>
       </div>
 
-      {/* FCM 상태 */}
       {!fcmReady && (
         <p style={{ color: '#ccc', fontSize: 12, textAlign: 'center', marginTop: 24 }}>
           알림 권한 설정 중...
