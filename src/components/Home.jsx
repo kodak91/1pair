@@ -41,6 +41,10 @@ export default function Home({ user, userData, testMode = false }) {
 
   // FCM 초기화
   useEffect(() => {
+    if (!('Notification' in window)) {
+      // 알림 API 미지원 환경
+      return
+    }
     const perm = Notification.permission
     if (perm === 'granted') {
       setNotifPermission('granted')
