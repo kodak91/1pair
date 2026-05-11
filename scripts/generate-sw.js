@@ -31,7 +31,10 @@ if (!env['VITE_FIREBASE_API_KEY']) {
   process.exit(0)
 }
 
-const template = `importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js')
+const template = `self.skipWaiting()
+self.clients.claim()
+
+importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js')
 importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-messaging-compat.js')
 
 firebase.initializeApp({
