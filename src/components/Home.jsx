@@ -103,6 +103,8 @@ export default function Home({ user, userData, testMode = false }) {
 
   async function sendPippi(type) {
     const targetToken = testMode ? myFcmTokenRef.current : partnerData?.fcmToken
+    const myToken = myFcmTokenRef.current
+    alert(`내 토큰: ${myToken?.slice(0,8) || '없음'}\n상대 토큰: ${targetToken?.slice(0,8) || '없음'}\n같음: ${myToken === targetToken}`)
     if (!targetToken) {
       alert(testMode
         ? '알림 권한을 허용해야 테스트 알림을 받을 수 있어요'
