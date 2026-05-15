@@ -13,9 +13,10 @@ firebase.initializeApp({
 const messaging = firebase.messaging()
 
 messaging.onBackgroundMessage((payload) => {
-  const { title, body } = payload.notification || {}
-  self.registration.showNotification(title || '1Pair', {
-    body: body || '새 삐삐가 도착했어요 💌',
+  const title = payload.data?.title || payload.notification?.title || '📟 삐삐왔다'
+  const body = payload.data?.body || payload.notification?.body || '새 삐삐가 도착했어요 💌'
+  self.registration.showNotification(title, {
+    body,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     data: payload.data,

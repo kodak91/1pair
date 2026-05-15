@@ -52,8 +52,10 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               message: {
                 token,
-                notification: { title, body },
-                data: { type: 'pippi' },
+                data: { type: 'pippi', title, body },
+                android: { priority: 'high' },
+                apns: { headers: { 'apns-priority': '10' } },
+                webpush: { headers: { Urgency: 'high' } },
               },
             }),
           }
