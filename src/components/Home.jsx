@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { signOut } from 'firebase/auth'
-import { doc, onSnapshot, collection, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { doc, onSnapshot, collection, addDoc, serverTimestamp, updateDoc, arrayUnion } from 'firebase/firestore'
 import { getToken, onMessage } from 'firebase/messaging'
 import { auth, db, getMessagingInstance } from '../firebase'
 
@@ -16,6 +16,14 @@ const PIPPI_MESSAGES = {
   miss:  (name) => `🥺 ${name}이(가) 보고싶대`,
   love:  (name) => `❤️ ${name}이(가) 사랑한대`,
   call:  (name) => `📞 ${name}이(가) 전화하고 싶대`,
+}
+
+// 파트너 데이터에서 FCM 토큰 배열 추출 (구형 fcmToken 필드 호환)
+function getPartnerTokens(partnerData) {
+  if (!partnerData) return []
+  if (partnerData.fcmTokens?.length) return partnerData.fcmTokens
+  if (partnerData.fcmToken) return [partnerData.fcmToken]
+  return []
 }
 
 export default function Home({ user, userData, testMode = false }) {
@@ -64,7 +72,6 @@ export default function Home({ user, userData, testMode = false }) {
     if (!messaging) return
     try {
       const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
-      // skipWaiting() in the SW ensures fast activation; wait if still installing
       if (!swReg.active) {
         await new Promise((resolve) => {
           const sw = swReg.installing || swReg.waiting
@@ -81,12 +88,22 @@ export default function Home({ user, userData, testMode = false }) {
         vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
         serviceWorkerRegistration: swReg,
       })
-      if (token) {
-        myFcmTokenRef.current = token
-        if (token !== userData?.fcmToken) {
-          await updateDoc(doc(db, 'users', user.uid), { fcmToken: token })
-        }
+      if (!token) return
+
+      myFcmTokenRef.current = token
+
+      // sessionStorage로 중복 write 방지 (탭 새로고침 등)
+      // 단, 세션 간 토큰 변경(기기 초기화 등)은 반드시 반영
+      const sessionKey = `fcmToken_${user.uid}`
+      const sessionToken = sessionStorage.getItem(sessionKey)
+      if (token !== sessionToken) {
+        // arrayUnion으로 이 기기 토큰 추가 (다른 기기 토큰 유지)
+        await updateDoc(doc(db, 'users', user.uid), {
+          fcmTokens: arrayUnion(token),
+        })
+        sessionStorage.setItem(sessionKey, token)
       }
+
       setFcmReady(true)
 
       onMessage(messaging, (payload) => {
@@ -95,7 +112,6 @@ export default function Home({ user, userData, testMode = false }) {
       })
     } catch (err) {
       console.warn('FCM 토큰 취득 실패:', err)
-      alert(`알림 설정 실패: ${err.message}`)
     }
   }
 
@@ -113,11 +129,15 @@ export default function Home({ user, userData, testMode = false }) {
   }
 
   async function sendPippi(type) {
-    const targetToken = testMode ? myFcmTokenRef.current : partnerData?.fcmToken
-    if (!targetToken) {
+    const targetTokens = testMode
+      ? (myFcmTokenRef.current ? [myFcmTokenRef.current] : [])
+      : getPartnerTokens(partnerData)
+    const toUid = testMode ? user.uid : userData?.partnerId
+
+    if (!targetTokens.length) {
       alert(testMode
         ? '알림 권한을 허용해야 테스트 알림을 받을 수 있어요'
-        : '상대방이 아직 알림을 허용하지 않았어요.\n상대방 앱에서 알림을 허용해주세요.')
+        : '상대방이 아직 앱을 열지 않았거나 알림이 꺼져 있어요.\n상대방에게 앱을 열어달라고 부탁해주세요.')
       return
     }
     setSending(type)
@@ -129,22 +149,28 @@ export default function Home({ user, userData, testMode = false }) {
         sentAt: serverTimestamp()
       })
       const msgText = PIPPI_MESSAGES[type](userData.nickname)
-      await sendFCMDirect(targetToken, '1Pair 삐삐 📳', msgText)
+      await sendFCMDirect(targetTokens, '1Pair 삐삐 📳', msgText, toUid)
       setLastSent(type)
       setTimeout(() => setLastSent(null), 3000)
     } catch (err) {
       console.error('삐삐 전송 실패:', err)
-      alert(`전송 실패: ${err.message}`)
+      if (err.message === 'DEVICE_UNREGISTERED') {
+        // 낙관적 업데이트: onSnapshot 기다리지 않고 즉시 배너 노출
+        setPartnerData(prev => prev ? { ...prev, fcmTokens: [], fcmToken: null } : prev)
+        alert('상대방 기기 알림이 만료됐어요.\n상대방이 앱을 열면 자동으로 복구돼요.')
+      } else {
+        alert(`전송 실패: ${err.message}`)
+      }
     } finally {
       setSending(null)
     }
   }
 
-  async function sendFCMDirect(token, title, body) {
+  async function sendFCMDirect(tokens, title, body, toUid) {
     const response = await fetch('/api/send-pippi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, title, body }),
+      body: JSON.stringify({ tokens, title, body, toUid }),
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
@@ -152,6 +178,8 @@ export default function Home({ user, userData, testMode = false }) {
     }
     return response.json()
   }
+
+  const partnerTokenMissing = !testMode && partnerData && getPartnerTokens(partnerData).length === 0
 
   return (
     <div className="page">
@@ -187,6 +215,17 @@ export default function Home({ user, userData, testMode = false }) {
         }}>
           🔕 알림이 차단되어 있어요.<br/>
           브라우저 설정 → 알림 → 이 사이트 허용 후 새로고침해주세요.
+        </div>
+      )}
+
+      {/* 상대방 토큰 전체 만료 안내 */}
+      {partnerTokenMissing && (
+        <div style={{
+          background: '#fff3cd', borderRadius: 12, padding: '12px 16px',
+          fontSize: 13, color: '#856404', marginBottom: 16, textAlign: 'center'
+        }}>
+          ⚠️ 상대방 알림이 초기화됐어요.<br/>
+          상대방이 앱을 열면 자동으로 복구돼요.
         </div>
       )}
 

@@ -41,7 +41,7 @@ export default function Auth() {
         inviteCode,
         partnerId: null,
         coupleId: null,
-        fcmToken: null,
+        fcmTokens: [],
         createdAt: serverTimestamp()
       })
     } catch (err) {
