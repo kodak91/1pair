@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { signOut } from 'firebase/auth'
 import {
   doc, onSnapshot, collection, addDoc, serverTimestamp,
-  updateDoc, arrayUnion, query, where, orderBy, limit,
+  updateDoc, arrayUnion, query, where,
 } from 'firebase/firestore'
 import { getToken, onMessage } from 'firebase/messaging'
 import { auth, db, getMessagingInstance } from '../firebase'
@@ -75,14 +75,14 @@ export default function Home({ user, userData, testMode = false }) {
 
   useEffect(() => {
     if (!user?.uid) return
-    const q = query(
-      collection(db, 'pippis'),
-      where('toUid', '==', user.uid),
-      orderBy('sentAt', 'desc'),
-      limit(1)
-    )
+    const q = query(collection(db, 'pippis'), where('toUid', '==', user.uid))
     return onSnapshot(q, (snap) => {
-      if (!snap.empty) setLastReceived(snap.docs[0].data())
+      if (snap.empty) return
+      const latest = snap.docs
+        .map(d => d.data())
+        .filter(d => d.sentAt)
+        .sort((a, b) => b.sentAt.toMillis() - a.sentAt.toMillis())[0]
+      if (latest) setLastReceived(latest)
     })
   }, [user?.uid])
 

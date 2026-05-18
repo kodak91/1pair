@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
-        name: '1Pair',
-        short_name: '1Pair',
+        name: '삐삐',
+        short_name: '삐삐',
         description: '커플이 감정을 주고받는 앱',
         theme_color: '#ff6b9d',
         background_color: '#ffffff',
